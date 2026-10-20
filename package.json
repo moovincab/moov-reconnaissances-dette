@@ -1,0 +1,16 @@
+{
+  "name": "moovin-debt-signatures",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "check": "node --check public/app.js && for f in netlify/functions/*.mjs netlify/functions/shared/*.mjs; do node --check \"$f\" || exit 1; done"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^6.0.2"
+  }
+}
