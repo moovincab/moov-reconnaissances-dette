@@ -1,0 +1,10 @@
+project_id = "moov-in-cab"
+
+[functions.get-signature-document]
+verify_jwt = false
+
+[functions.sign-debt]
+verify_jwt = false
+
+[functions.send-reminders]
+verify_jwt = false
