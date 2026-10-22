@@ -68,6 +68,35 @@ function canvasInit(id) {
   canvas._clear=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);drawn=false;};
   canvas._isDrawn=()=>drawn;
 }
+function textToPng(text) {
+  const canvas = document.createElement("canvas");
+  const width = 1600, padding = 32, fontSize = 32, lineHeight = 44;
+  canvas.width = width;
+  canvas.height = 200;
+  let ctx = canvas.getContext("2d");
+  ctx.font = `${fontSize}px Arial, sans-serif`;
+  const maxWidth = width - padding * 2;
+  const lines = [];
+  let line = "";
+  for (const word of String(text).split(/\\s+/)) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  canvas.height = padding * 2 + Math.max(1, lines.length) * lineHeight;
+  ctx = canvas.getContext("2d");
+  ctx.font = `${fontSize}px Arial, sans-serif`;
+  ctx.fillStyle = "#102a43";
+  ctx.textBaseline = "top";
+  lines.forEach((value, index) => ctx.fillText(value, padding, padding + index * lineHeight));
+  return canvas.toDataURL("image/png");
+}
+
 async function renderSignature() {
   headerStatus.textContent="Signature sécurisée";
   if (missingConfig) { configError(); return; }
@@ -81,8 +110,8 @@ async function renderSignature() {
   if(!signatureDocument?.debt){pageShell(`<div class="loading">Chargement du document…</div>`);return;}
   const d=signatureDocument.debt;
   const phrase=`Bon pour reconnaissance de dette de ${d.amount_in_words} euros (${money(d.amount)}).`;
-  pageShell(`<section class="signature-paper stack"><div><p class="pill">MOOV IN CAB · DOCUMENT À SIGNER</p><h1>Reconnaissance de dette</h1><p class="muted">Veuillez vérifier les informations avant de signer. Le lien est individuel et temporaire.</p></div>${noticeHtml()}<div class="detail-grid"><div class="detail-item"><span>Créancier</span><strong>${esc(d.creditor_name)}</strong></div><div class="detail-item"><span>Débiteur</span><strong>${esc(d.debtor_name)}</strong></div><div class="detail-item"><span>Montant total</span><strong>${money(d.amount)}</strong></div><div class="detail-item"><span>Motif</span><strong>${esc(d.reason)}</strong></div></div><div><h3>Échéancier de remboursement</h3><div class="table-wrap"><table><thead><tr><th>N°</th><th>Échéance</th><th>Montant</th></tr></thead><tbody>${(signatureDocument.installments||[]).map(i=>`<tr><td>${i.sequence_no}</td><td>${date(i.due_date)}</td><td>${money(i.amount)}</td></tr>`).join("")}</tbody></table></div></div><div class="notice">Pour signer, recopiez à la main la mention ci-dessous dans la zone prévue, puis apposez votre signature dans la seconde zone. Vérifiez que le montant correspond bien à votre accord.</div><div class="phrase">${esc(phrase)}</div><form id="signatureForm" class="stack"><div class="field"><label for="debtorDob">Date de naissance</label><input id="debtorDob" name="debtor_dob" type="date" required max="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>1. Mention manuscrite</label><div class="canvas-wrap"><canvas id="mentionCanvas" class="signature-canvas mention" aria-label="Zone pour écrire la mention manuscrite"></canvas><div class="canvas-tools"><span>Écrivez la mention complète ci-dessus.</span><button type="button" class="btn secondary small-btn" data-action="clear-canvas" data-id="mentionCanvas">Effacer</button></div></div></div><div class="field"><label>2. Signature</label><div class="canvas-wrap"><canvas id="signatureCanvas" class="signature-canvas" aria-label="Zone pour dessiner la signature"></canvas><div class="canvas-tools"><span>Signez avec votre doigt ou votre souris.</span><button type="button" class="btn secondary small-btn" data-action="clear-canvas" data-id="signatureCanvas">Effacer</button></div></div></div><label class="checkbox"><input type="checkbox" name="accepted" required><span>Je confirme avoir lu le document, reconnaître les informations présentées et accepter la dette et son échéancier. Je comprends que cette signature électronique sera enregistrée avec la date et des données techniques de connexion.</span></label><button class="btn" type="submit">Confirmer et signer</button><p class="help">La date de naissance est déclarative. Cette signature n'est pas une signature électronique qualifiée avec vérification officielle de l'identité.</p></form></section>`);
-  canvasInit("mentionCanvas"); canvasInit("signatureCanvas");
+  pageShell(`<section class="signature-paper stack"><div><p class="pill">MOOV IN CAB · DOCUMENT À SIGNER</p><h1>Reconnaissance de dette</h1><p class="muted">Veuillez vérifier les informations avant de signer. Le lien est individuel et temporaire.</p></div>${noticeHtml()}<div class="detail-grid"><div class="detail-item"><span>Créancier</span><strong>${esc(d.creditor_name)}</strong></div><div class="detail-item"><span>Débiteur</span><strong>${esc(d.debtor_name)}</strong></div><div class="detail-item"><span>Montant total</span><strong>${money(d.amount)}</strong></div><div class="detail-item"><span>Motif</span><strong>${esc(d.reason)}</strong></div></div><div><h3>Échéancier de remboursement</h3><div class="table-wrap"><table><thead><tr><th>N°</th><th>Échéance</th><th>Montant</th></tr></thead><tbody>${(signatureDocument.installments||[]).map(i=>`<tr><td>${i.sequence_no}</td><td>${date(i.due_date)}</td><td>${money(i.amount)}</td></tr>`).join("")}</tbody></table></div></div><div class="notice">Vérifiez le montant et l'échéancier. La mention ci-dessous sera ajoutée au document. Pour valider, cochez obligatoirement « Bon pour accord » et apposez votre signature manuscrite dans la zone prévue.</div><div class="phrase">${esc(phrase)}</div><form id="signatureForm" class="stack"><div class="field"><label for="debtorDob">Date de naissance</label><input id="debtorDob" name="debtor_dob" type="date" required max="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Signature manuscrite obligatoire</label><div class="canvas-wrap"><canvas id="signatureCanvas" class="signature-canvas" aria-label="Zone pour dessiner la signature"></canvas><div class="canvas-tools"><span>Signez avec votre doigt ou votre souris.</span><button type="button" class="btn secondary small-btn" data-action="clear-canvas" data-id="signatureCanvas">Effacer</button></div></div></div><label class="checkbox"><input type="checkbox" name="accepted" required><span><strong>Bon pour accord.</strong> Je confirme avoir lu le document, reconnaître la dette du montant indiqué et accepter l'échéancier de remboursement. Je comprends que ma signature sera enregistrée avec la date et des données techniques de connexion.</span></label><button class="btn" type="submit">Confirmer et signer</button><p class="help">La date de naissance est déclarative. Cette signature n'est pas une signature électronique qualifiée avec vérification officielle de l'identité.</p></form></section>`);
+  canvasInit("signatureCanvas");
 }
 async function loadDashboard() {
   const [dResult,pResult] = await Promise.all([
@@ -118,9 +147,11 @@ root.addEventListener("submit", async (event) => {
     } else if(form.id==="inviteForm") {
       const fd=new FormData(form);const {data,error}=await supabase.functions.invoke("invite-user",{body:Object.fromEntries(fd.entries())});if(error)throw error;setNotice(data?.message||"Invitation envoyée.","success");await loadDashboard();view="dashboard";renderDashboard();
     } else if(form.id==="signatureForm") {
-      const mention=document.getElementById("mentionCanvas"),sig=document.getElementById("signatureCanvas");
-      if(!mention?._isDrawn?.() || !sig?._isDrawn?.())throw new Error("Veuillez écrire la mention manuscrite et signer dans les deux zones.");
-      const fd=new FormData(form);const payload={token,debtor_dob:fd.get("debtor_dob"),accepted:fd.get("accepted")==="on",mention_png:mention.toDataURL("image/png"),signature_png:sig.toDataURL("image/png")};
+      const sig=document.getElementById("signatureCanvas");
+      if(!sig?._isDrawn?.())throw new Error("Veuillez apposer votre signature manuscrite avant de continuer.");
+      const fd=new FormData(form);
+      if(fd.get("accepted")!=="on")throw new Error("Veuillez cocher la case « Bon pour accord » pour valider.");
+      const payload={token,debtor_dob:fd.get("debtor_dob"),accepted:true,mention_png:textToPng(phrase),signature_png:sig.toDataURL("image/png")};
       const {data,error}=await supabase.functions.invoke("sign-debt",{body:payload});if(error)throw error;signatureDocument={signed:true,message:data?.message||"Votre signature a été enregistrée."};setNotice(null);await renderSignature();
     }
   } catch(e) { setNotice(await detailedErrorMessage(e),"error"); if(form.id==="signatureForm"){await renderSignature();}else if(form.id==="loginForm"){renderLogin();}else if(form.id==="createForm"){renderCreate();}else if(form.id==="inviteForm"){renderInvite();} }
