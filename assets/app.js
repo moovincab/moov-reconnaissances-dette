@@ -14,6 +14,15 @@ function date(value) { if (!value) return "—"; return new Date(`${String(value
 function dateTime(value) { return value ? new Date(value).toLocaleString("fr-FR") : "—"; }
 function statusLabel(s) { return ({pending_signature:"En attente de signature",signed:"Signée — en remboursement",repaid:"Remboursée"})[s] || s; }
 function errorMessage(e) { return e?.message || "Une erreur est survenue. Réessayez."; }
+async function detailedErrorMessage(e) {
+  const response = e?.context;
+  if (response && typeof response.clone === "function") {
+    const payload = await response.clone().json().catch(() => null);
+    if (typeof payload?.error === "string") return payload.error;
+    if (typeof payload?.message === "string") return payload.message;
+  }
+  return errorMessage(e);
+}
 function setNotice(message, type="notice") { notice = {message,type}; }
 function noticeHtml() { return notice ? `<div class="${esc(notice.type)}" role="status">${esc(notice.message)}</div>` : ""; }
 function pageShell(content) { root.innerHTML = content; }
@@ -103,7 +112,8 @@ root.addEventListener("submit", async (event) => {
     } else if(form.id==="createForm") {
       const fd=new FormData(form); const body=Object.fromEntries(fd.entries()); body.amount=Number(body.amount);body.installment_count=Number(body.installment_count);
       const {data,error}=await supabase.functions.invoke("create-debt",{body});if(error)throw error;
-      if(data?.emailSent===false){setNotice(`Dossier créé, mais l'e-mail n'a pas pu être envoyé : ${data.emailWarning||"vérifiez Resend et les secrets Supabase"}.`,"error");}else{setNotice("Dossier créé. Le lien de signature a été envoyé au débiteur.","success");}
+      if(data?.ok!==true || data?.emailSent!==true) throw new Error(data?.error || "La création n'a pas été confirmée et l'e-mail n'est pas confirmé comme envoyé.");
+      setNotice("Dossier créé et lien de signature envoyé au débiteur.","success");
       await loadDashboard();view="dashboard";renderDashboard();
     } else if(form.id==="inviteForm") {
       const fd=new FormData(form);const {data,error}=await supabase.functions.invoke("invite-user",{body:Object.fromEntries(fd.entries())});if(error)throw error;setNotice(data?.message||"Invitation envoyée.","success");await loadDashboard();view="dashboard";renderDashboard();
@@ -113,7 +123,7 @@ root.addEventListener("submit", async (event) => {
       const fd=new FormData(form);const payload={token,debtor_dob:fd.get("debtor_dob"),accepted:fd.get("accepted")==="on",mention_png:mention.toDataURL("image/png"),signature_png:sig.toDataURL("image/png")};
       const {data,error}=await supabase.functions.invoke("sign-debt",{body:payload});if(error)throw error;signatureDocument={signed:true,message:data?.message||"Votre signature a été enregistrée."};setNotice(null);await renderSignature();
     }
-  } catch(e) { setNotice(errorMessage(e),"error"); if(form.id==="signatureForm"){await renderSignature();}else if(form.id==="loginForm"){renderLogin();}else if(form.id==="createForm"){renderCreate();}else if(form.id==="inviteForm"){renderInvite();} }
+  } catch(e) { setNotice(await detailedErrorMessage(e),"error"); if(form.id==="signatureForm"){await renderSignature();}else if(form.id==="loginForm"){renderLogin();}else if(form.id==="createForm"){renderCreate();}else if(form.id==="inviteForm"){renderInvite();} }
   finally { const active=root.querySelector('form [type="submit"]'); if(active)active.disabled=false; }
 });
 root.addEventListener("click", async (event) => {
@@ -125,11 +135,11 @@ root.addEventListener("click", async (event) => {
     else if(action==="back"||action==="refresh"){notice=null;await loadDashboard();view="dashboard";renderDashboard();}
     else if(action==="logout"){await supabase.auth.signOut();session=null;profile=null;debts=[];notice=null;renderLogin();}
     else if(action==="detail"){selectedDebtId=id;view="detail";notice=null;renderDetail(debts.find(d=>d.id===id));}
-    else if(action==="resend"){button.disabled=true;const {data,error}=await supabase.functions.invoke("resend-signature-link",{body:{debt_id:id}});if(error)throw error;setNotice(data?.message||"Nouveau lien envoyé.","success");await loadDashboard();view="detail";renderDetail(debts.find(d=>d.id===selectedDebtId));}
+    else if(action==="resend"){button.disabled=true;const {data,error}=await supabase.functions.invoke("resend-signature-link",{body:{debt_id:id}});if(error)throw error;if(data?.warning){setNotice(data.warning,"error");}else{setNotice(data?.message||"Nouveau lien envoyé.","success");}await loadDashboard();view="detail";renderDetail(debts.find(d=>d.id===selectedDebtId));}
     else if(action==="download"){const downloadWindow=window.open("about:blank","_blank");button.disabled=true;const {data,error}=await supabase.functions.invoke("download-signed-pdf",{body:{debt_id:id}});if(error){downloadWindow?.close();throw error;}if(!data?.url){downloadWindow?.close();throw new Error("Lien de téléchargement manquant.");}if(downloadWindow)downloadWindow.location.href=data.url;else location.href=data.url;button.disabled=false;}
     else if(action==="mark"){button.disabled=true;const {error}=await supabase.functions.invoke("mark-installment",{body:{installment_id:id,paid:button.dataset.paid==="true"}});if(error)throw error;await loadDashboard();view="detail";renderDetail(debts.find(d=>d.id===selectedDebtId));}
     else if(action==="clear-canvas"){document.getElementById(id)?._clear?.();}
-  } catch(e){setNotice(errorMessage(e),"error");if(view==="detail")renderDetail(debts.find(d=>d.id===selectedDebtId));else renderDashboard();}
+  } catch(e){setNotice(await detailedErrorMessage(e),"error");if(view==="detail")renderDetail(debts.find(d=>d.id===selectedDebtId));else renderDashboard();}
 });
 supabase?.auth.onAuthStateChange((_event,newSession)=>{session=newSession; if(!token) setTimeout(()=>boot().catch(e=>{setNotice(errorMessage(e),"error");renderLogin();}),0);});
 boot().catch(e=>{setNotice(errorMessage(e),"error");renderLogin();});
