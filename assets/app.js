@@ -78,7 +78,7 @@ function textToPng(text) {
   const maxWidth = width - padding * 2;
   const lines = [];
   let line = "";
-  for (const word of String(text).split(/\\s+/)) {
+  for (const word of String(text).split(/\s+/)) {
     const candidate = line ? `${line} ${word}` : word;
     if (line && ctx.measureText(candidate).width > maxWidth) {
       lines.push(line);
@@ -151,7 +151,7 @@ root.addEventListener("submit", async (event) => {
       if(!sig?._isDrawn?.())throw new Error("Veuillez apposer votre signature manuscrite avant de continuer.");
       const fd=new FormData(form);
       if(fd.get("accepted")!=="on")throw new Error("Veuillez cocher la case « Bon pour accord » pour valider.");
-      const payload={token,debtor_dob:fd.get("debtor_dob"),accepted:true,mention_png:textToPng(phrase),signature_png:sig.toDataURL("image/png")};
+      const payload={token,debtor_dob:fd.get("debtor_dob"),accepted:true,mention_png:textToPng(`Bon pour reconnaissance de dette de ${signatureDocument?.debt?.amount_in_words || ""} euros (${money(signatureDocument?.debt?.amount)}).`),signature_png:sig.toDataURL("image/png")};
       const {data,error}=await supabase.functions.invoke("sign-debt",{body:payload});if(error)throw error;signatureDocument={signed:true,message:data?.message||"Votre signature a été enregistrée."};setNotice(null);await renderSignature();
     }
   } catch(e) { setNotice(await detailedErrorMessage(e),"error"); if(form.id==="signatureForm"){await renderSignature();}else if(form.id==="loginForm"){renderLogin();}else if(form.id==="createForm"){renderCreate();}else if(form.id==="inviteForm"){renderInvite();} }
