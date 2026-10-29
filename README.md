@@ -1,15 +1,17 @@
-# MOOV IN CAB — GitHub Pages + Supabase (sans Netlify)
+# MOOV IN CAB — Frontend statique + Supabase (OVH / GitHub Pages)
 
-Version statique pour GitHub Pages avec backend Supabase Edge Functions. Le code du site est public, mais les données et les PDF signés restent dans Supabase avec accès privé.
+Application statique avec backend Supabase Edge Functions. Le site de production prévu est https://reconnaissances.moov-in-cab.fr/ ; le workflow GitHub Pages peut continuer à publier une copie tant qu’il reste activé. Le code du site est public, mais les données et les PDF signés restent dans Supabase avec accès privé.
 
 ## Fonctionnalités incluses
 
 - Connexion de l'équipe avec Supabase Auth (comptes créés par invitation, pas d'inscription publique).
 - Tableau de bord des reconnaissances de dette, recherche, détail et échéancier.
-- Création d'un dossier, répartition du montant sur des échéances hebdomadaires ou mensuelles et choix d'un responsable de rappels.
+- Création d'un dossier avec créancier prérempli MOOV IN CAB, sélection ou ajout de plusieurs créanciers, et copie des informations du créancier dans chaque reconnaissance.
+- PDF de reconnaissance de dette structuré en cinq articles selon le modèle fourni, avec les données du débiteur, le véhicule, le contrat de location et le choix entre paiement comptant ou échelonné.
+- Répartition du montant sur des échéances hebdomadaires ou mensuelles et choix d'un responsable de rappels.
 - Envoi et renvoi d'un lien de signature par e-mail valable 14 jours (les anciens liens sont invalidés au renvoi).
 - Page de signature adaptée au mobile : date de naissance déclarée, mention manuscrite dessinée, signature dessinée et confirmation explicite.
-- Génération serveur d'un PDF et archivage dans un bucket Supabase privé ; empreinte SHA-256, horodatage et métadonnées techniques enregistrés.
+- Génération serveur du PDF signé et archivage dans un bucket Supabase privé ; empreinte SHA-256 du fichier final conservée en base, et empreinte distincte des données contractuelles et signatures imprimée dans le PDF.
 - Téléchargement d'un PDF par lien privé temporaire (60 secondes).
 - Rappels par e-mail au responsable du dossier : jusqu'à J-3, à l'échéance, J+1, J+7, J+14 puis chaque semaine pour une échéance toujours impayée.
 - Marquage manuel des échéances payées ; les rappels s'arrêtent lorsque l'échéance est payée et le dossier passe à « Remboursée » lorsque tout est réglé.
@@ -31,11 +33,7 @@ Aucun Netlify ni serveur personnel n'est nécessaire. Les fonctions serveur sont
 
 ## 1. Créer le dépôt GitHub et publier le frontend
 
-1. Créez un dépôt GitHub nommé par exemple `moov-reconnaissances-dette`.
-2. Téléversez **le contenu de ce dossier**, y compris le dossier `.github`, à la racine du dépôt (pas le dossier parent lui-même).
-3. Dans GitHub, ouvrez **Settings → Pages** et choisissez **GitHub Actions** comme source de publication.
-4. La workflow `.github/workflows/pages.yml` publiera le site à chaque push sur `main`.
-5. L'adresse ressemblera à `https://VOTRE-UTILISATEUR.github.io/moov-reconnaissances-dette/`.
+Le dépôt GitHub reste la source du code. L’hébergement OVH configuré pour `reconnaissances.moov-in-cab.fr` sert le site de production. Le workflow `.github/workflows/pages.yml` publie aussi sur GitHub Pages tant qu’il reste activé ; ne le supprimez pas sans décider explicitement si cette copie doit être conservée.
 
 Le dépôt peut être public pour utiliser GitHub Pages gratuitement. Il ne doit contenir **aucun PDF client, aucune donnée réelle de débiteur et aucun secret**. Le code client et la clé Supabase `anon` sont publics par conception ; la sécurité repose sur les politiques SQL et les fonctions serveur.
 
@@ -43,8 +41,8 @@ Le dépôt peut être public pour utiliser GitHub Pages gratuitement. Il ne doit
 
 1. Créez un projet sur https://supabase.com/dashboard et conservez le mot de passe de base de données en lieu sûr.
 2. Dans **SQL Editor**, ouvrez `supabase/migrations/20261020000000_init.sql` et exécutez tout le script.
-3. Cette migration crée les tables, les politiques de lecture authentifiée, le bucket PDF privé et le déclencheur de profil.
-4. Dans **Authentication → URL Configuration**, définissez `Site URL` sur l'URL GitHub Pages et ajoutez cette même URL aux `Redirect URLs`. Gardez le chemin du dépôt et la barre oblique finale, par exemple `https://VOTRE-UTILISATEUR.github.io/moov-reconnaissances-dette/`.
+3. Exécutez ensuite, dans cet ordre, `supabase/migrations/20261029120000_creditors_pdf_template.sql`, puis `supabase/migrations/20261029121000_rls_security_hardening.sql`. Ces migrations ajoutent les créanciers et les champs du modèle, puis limitent la lecture des dossiers aux utilisateurs autorisés. Elles sont additives et ne remplacent pas la migration initiale.
+4. Dans **Authentication → URL Configuration**, définissez `Site URL` sur `https://reconnaissances.moov-in-cab.fr/` et ajoutez cette URL aux `Redirect URLs`. Gardez la barre oblique finale. Faites de même pour les autres URL réellement utilisées, si vous conservez une copie GitHub Pages.
 5. Dans **Authentication → Providers → Email**, désactivez les inscriptions publiques si elles sont activées. Configurez un SMTP de production pour les invitations et les e-mails d'authentification ; le service de test Supabase est limité.
 
 ### Créer le premier administrateur
@@ -86,6 +84,7 @@ Le `PROJECT_REF` est l'identifiant du projet visible dans l'URL Supabase ou dans
 
 ```bash
 supabase functions deploy create-debt
+supabase functions deploy manage-creditors
 supabase functions deploy get-signature-document
 supabase functions deploy sign-debt
 supabase functions deploy invite-user
@@ -105,12 +104,12 @@ Supabase fournit automatiquement aux Edge Functions `SUPABASE_URL` et `SUPABASE_
 4. Définissez les secrets des fonctions Supabase. Exemple bash (remplacez chaque valeur) :
 
 ```bash
-supabase secrets set APP_URL="https://VOTRE-UTILISATEUR.github.io/moov-reconnaissances-dette/" RESEND_API_KEY="re_VOTRE_CLE_RESEND" RESEND_FROM="MOOV IN CAB <signatures@votre-domaine.fr>" MOOV_CRON_SECRET="VOTRE_SECRET_ALEATOIRE_LONG"
+supabase secrets set APP_URL="https://reconnaissances.moov-in-cab.fr/" RESEND_API_KEY="re_VOTRE_CLE_RESEND" RESEND_FROM="MOOV IN CAB <signatures@votre-domaine.fr>" MOOV_CRON_SECRET="VOTRE_SECRET_ALEATOIRE_LONG"
 ```
 
 Cette commande sur une seule ligne fonctionne aussi dans PowerShell ; remplacez les exemples avant de l'exécuter.
 
-`APP_URL` doit être l'URL exacte de GitHub Pages, avec le chemin du dépôt. Générez un secret aléatoire long pour `MOOV_CRON_SECRET`, par exemple avec `openssl rand -hex 32`. Utilisez **exactement la même valeur** pour le secret de fonction et pour Vault à l'étape suivante.
+`APP_URL` doit être l'URL exacte de production `https://reconnaissances.moov-in-cab.fr/`. Cette valeur sert aux liens de signature et aux liens des e-mails de rappel. Après toute modification, redéployez les fonctions si nécessaire et vérifiez les Redirect URLs dans Supabase Auth. Générez un secret aléatoire long pour `MOOV_CRON_SECRET`, par exemple avec `openssl rand -hex 32`. Utilisez **exactement la même valeur** pour le secret de fonction et pour Vault à l'étape suivante.
 
 Les liens de signature expirent après 14 jours. Si Resend échoue à l'envoi initial, le dossier est conservé et l'interface affiche un avertissement. Ouvrez le dossier et cliquez sur « Renvoyer le lien de signature » après avoir corrigé la configuration.
 
@@ -144,7 +143,8 @@ Avant de saisir des données réelles :
 
 - Connectez-vous avec le compte administrateur.
 - Invitez un collaborateur de test ; vérifiez le SMTP Supabase si l'invitation n'arrive pas.
-- Créez un dossier avec une adresse e-mail de test.
+- Créez un dossier de test avec le créancier MOOV IN CAB prérempli, puis ajoutez un deuxième créancier pour vérifier la sélection.
+- Testez un paiement comptant et un paiement échelonné ; vérifiez que chaque échéance apparaît correctement dans le PDF.
 - Ouvrez le lien de signature sur un téléphone et testez la mention manuscrite et la signature.
 - Vérifiez dans Supabase Storage que le PDF se trouve dans le bucket privé `signed-debt-documents` et qu'il n'est pas public.
 - Téléchargez le PDF depuis le tableau de bord ; le lien de téléchargement expire au bout de 60 secondes.
