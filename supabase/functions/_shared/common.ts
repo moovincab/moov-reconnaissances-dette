@@ -26,6 +26,61 @@ export async function requireUser(req: Request) {
   if (pError || !profile) throw new Error("Profil utilisateur introuvable.");
   return { db, user: data.user, profile };
 }
+
+export function canAccessDebt(
+  profile: { role?: string },
+  userId: string,
+  debt: { created_by?: string | null; assigned_to?: string | null },
+) {
+  return profile.role === "admin" || debt.created_by === userId || debt.assigned_to === userId;
+}
+
+const FR_UNITS = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize"];
+function frenchInteger(n: number): string {
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) throw new Error("Montant invalide pour la conversion en lettres.");
+  if (n < 17) return FR_UNITS[n];
+  if (n < 20) return `dix-${FR_UNITS[n - 10]}`;
+  if (n < 70) {
+    const tens = Math.floor(n / 10) * 10; const rest = n % 10;
+    const labels: Record<number, string> = {20:"vingt",30:"trente",40:"quarante",50:"cinquante",60:"soixante"};
+    if (!rest) return labels[tens];
+    return `${labels[tens]}${rest === 1 ? " et un" : `-${FR_UNITS[rest]}`}`;
+  }
+  if (n < 80) {
+    const rest = n - 60;
+    if (rest === 11) return "soixante et onze";
+    return `soixante-${frenchInteger(rest)}`;
+  }
+  if (n < 100) {
+    const rest = n - 80;
+    if (!rest) return "quatre-vingts";
+    return `quatre-vingt${rest === 1 ? "-un" : `-${frenchInteger(rest)}`}`;
+  }
+  if (n < 1000) {
+    const hundreds = Math.floor(n / 100); const rest = n % 100;
+    const prefix = hundreds === 1 ? "cent" : `${FR_UNITS[hundreds]} cent`;
+    return `${prefix}${rest === 0 && hundreds > 1 ? "s" : ""}${rest ? ` ${frenchInteger(rest)}` : ""}`;
+  }
+  if (n < 1_000_000) {
+    const thousands = Math.floor(n / 1000); const rest = n % 1000;
+    return `${thousands === 1 ? "mille" : `${frenchInteger(thousands)} mille`}${rest ? ` ${frenchInteger(rest)}` : ""}`;
+  }
+  if (n < 1_000_000_000) {
+    const millions = Math.floor(n / 1_000_000); const rest = n % 1_000_000;
+    return `${frenchInteger(millions)} million${millions > 1 ? "s" : ""}${rest ? ` ${frenchInteger(rest)}` : ""}`;
+  }
+  const milliards = Math.floor(n / 1_000_000_000); const rest = n % 1_000_000_000;
+  return `${frenchInteger(milliards)} milliard${milliards > 1 ? "s" : ""}${rest ? ` ${frenchInteger(rest)}` : ""}`;
+}
+export function amountInFrenchWords(value: number | string): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 100_000_000) throw new Error("Montant invalide pour la conversion en lettres.");
+  const centsTotal = Math.round(amount * 100);
+  const euros = Math.floor(centsTotal / 100); const cents = centsTotal % 100;
+  const euroText = `${frenchInteger(euros)} euro${euros > 1 ? "s" : ""}`;
+  return cents ? `${euroText} et ${frenchInteger(cents)} centime${cents > 1 ? "s" : ""}` : euroText;
+}
+
 export async function sendEmail(to: string, subject: string, html: string, text: string) {
   const key = Deno.env.get("RESEND_API_KEY");
   const from = Deno.env.get("RESEND_FROM");

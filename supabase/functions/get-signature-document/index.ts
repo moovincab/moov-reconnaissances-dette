@@ -10,8 +10,9 @@ Deno.serve(async (req) => {
     if (error || !request) throw new Error("Lien de signature inconnu ou invalide.");
     if (request.signed_at) return json({ signed: true, message: "Ce document a déjà été signé." });
     if (new Date(request.expires_at).getTime() < Date.now()) throw new Error("Ce lien de signature a expiré. Contactez MOOV IN CAB pour recevoir un nouveau lien.");
-    const { data: debt, error: debtError } = await db.from("debts").select("id,creditor_name,creditor_address,debtor_name,debtor_address,amount,amount_in_words,reason,frequency,installment_count,status,created_at").eq("id", request.debt_id).single();
+    const { data: debt, error: debtError } = await db.from("debts").select("id,creditor_id,creditor_name,creditor_address,creditor_siren,creditor_representative,debtor_name,debtor_email,debtor_phone,debtor_address,vehicle,vehicle_registration,rental_contract_signed_at,amount,amount_in_words,reason,repayment_mode,cash_due_date,frequency,installment_count,status,created_at").eq("id", request.debt_id).single();
     if (debtError || !debt) throw new Error("Document introuvable.");
+    if (debt.status !== "pending_signature") return json({ signed: true, message: "Ce document a déjà été signé." });
     const { data: installments } = await db.from("installments").select("sequence_no,due_date,amount").eq("debt_id", debt.id).order("sequence_no");
     return json({ signed: false, expires_at: request.expires_at, debt, installments: installments || [] });
   } catch (e) { return errorResponse(e); }

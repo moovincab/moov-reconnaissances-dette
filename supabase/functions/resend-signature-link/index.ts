@@ -1,13 +1,13 @@
-import { errorResponse, escapeHtml, json, preflight, requireUser, randomToken, sha256, sendEmail, amountFr } from "../_shared/common.ts";
+import { canAccessDebt, errorResponse, escapeHtml, json, preflight, requireUser, randomToken, sha256, sendEmail, amountFr } from "../_shared/common.ts";
 Deno.serve(async (req) => {
   const pf = preflight(req); if (pf) return pf;
   if (req.method !== "POST") return json({error:"Méthode non autorisée."},405);
   try {
-    const {db} = await requireUser(req);
+    const {db, user, profile} = await requireUser(req);
     const {debt_id} = await req.json();
     if (typeof debt_id !== "string") throw new Error("Identifiant de dossier invalide.");
-    const {data:debt,error} = await db.from("debts").select("id,debtor_name,debtor_email,amount,status").eq("id",debt_id).single();
-    if (error || !debt) throw new Error("Dossier introuvable.");
+    const {data:debt,error} = await db.from("debts").select("id,created_by,assigned_to,debtor_name,debtor_email,amount,status").eq("id",debt_id).single();
+    if (error || !debt || !canAccessDebt(profile, user.id, debt)) throw new Error("Dossier introuvable ou accès non autorisé.");
     if (debt.status !== "pending_signature") throw new Error("Ce dossier n'est plus en attente de signature.");
     const now = new Date().toISOString();
     await db.from("signature_requests").update({expires_at:now}).eq("debt_id",debt.id).is("signed_at",null);
